@@ -115,6 +115,16 @@ button:disabled {
   font-size: 0.92rem;
 }
 
+.status.ok {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.status.bad {
+  color: var(--danger);
+  font-weight: 600;
+}
+
 .user-list {
   list-style: none;
   padding: 0;
@@ -157,4 +167,80 @@ button:disabled {
   border-radius: 999px;
   font-size: 1.2rem;
   padding: 0;
+}
+
+.thread-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.thread-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.thread {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.85rem;
+  display: grid;
+  gap: 0.55rem;
+  max-height: 18rem;
+  overflow: auto;
+}
+
+.thread li {
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  background: var(--card);
+}
+
+.thread li.mine {
+  border-color: #99f6e4;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.thread li.theirs {
+  border-color: var(--line);
+}
+
+.bubble-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin-bottom: 0.35rem;
+}
+
+.bubble-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.push-tag {
+  font-weight: 600;
+}
+
+.push-tag.ok {
+  color: var(--accent);
+}
+
+.push-tag.bad {
+  color: var(--danger);
+}
+
+.push-tag.wait {
+  color: #a16207;
+}
+
+.pager {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
 }

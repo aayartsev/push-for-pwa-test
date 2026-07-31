@@ -103,6 +103,78 @@ def test_get_missing_message_returns_404(client: TestClient) -> None:
     assert response.status_code == 404
 
 
+def test_list_messages_paginates_conversation(
+    client: TestClient, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        "app.routers.messages.send_test_notification",
+        lambda **kwargs: PushResult(ok=True),
+    )
+    alice = _create_user(client, "AliceList")
+    bob = _create_user(client, "BobList")
+    outsider = _create_user(client, "OutsiderList")
+
+    for i in range(5):
+        assert (
+            client.post(
+                "/api/messages",
+                json={
+                    "from_user_id": alice,
+                    "to_user_id": bob,
+                    "text": f"a-{i}",
+                },
+            ).status_code
+            == 201
+        )
+    assert (
+        client.post(
+            "/api/messages",
+            json={
+                "from_user_id": bob,
+                "to_user_id": alice,
+                "text": "b-reply",
+            },
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            "/api/messages",
+            json={
+                "from_user_id": alice,
+                "to_user_id": outsider,
+                "text": "noise",
+            },
+        ).status_code
+        == 201
+    )
+
+    page1 = client.get(
+        "/api/messages",
+        params={"user_id": alice, "peer_id": bob, "limit": 3, "offset": 0},
+    )
+    assert page1.status_code == 200
+    body = page1.json()
+    assert body["total"] == 6
+    assert body["limit"] == 3
+    assert body["offset"] == 0
+    assert len(body["items"]) == 3
+    assert body["items"][0]["text"] == "b-reply"
+
+    page2 = client.get(
+        "/api/messages",
+        params={"user_id": alice, "peer_id": bob, "limit": 3, "offset": 3},
+    ).json()
+    assert len(page2["items"]) == 3
+    assert page2["items"][-1]["text"] == "a-0"
+
+    missing = client.get(
+        "/api/messages",
+        params={"user_id": alice, "peer_id": "no-such-user"},
+    )
+    assert missing.status_code == 404
+
+
 def test_send_passes_message_id_in_click_url(
     client: TestClient, monkeypatch
 ) -> None:

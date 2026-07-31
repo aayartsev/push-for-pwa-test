@@ -6,11 +6,11 @@ import uuid
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from app.config import get_settings
 from app.db import get_connection
-from app.models import MessageCreate, MessageOut
+from app.models import MessageCreate, MessageListOut, MessageOut
 from app.services.pushhive import send_test_notification
 
 router = APIRouter(prefix="/api/messages", tags=["messages"])
@@ -18,6 +18,67 @@ router = APIRouter(prefix="/api/messages", tags=["messages"])
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _row_to_message(row) -> MessageOut:
+    return MessageOut(
+        id=row["id"],
+        text=row["text"],
+        from_user_id=row["from_user_id"],
+        to_user_id=row["to_user_id"],
+        push_status=row["push_status"],
+        push_error=row["push_error"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+@router.get("", response_model=MessageListOut)
+def list_messages(
+    user_id: str = Query(min_length=1),
+    peer_id: str = Query(min_length=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> MessageListOut:
+    """Переписка user_id ↔ peer_id, новые сверху, с пагинацией."""
+    if user_id == peer_id:
+        raise HTTPException(status_code=400, detail="user_id and peer_id must differ")
+
+    with get_connection() as conn:
+        for uid, label in ((user_id, "user_id"), (peer_id, "peer_id")):
+            exists = conn.execute(
+                "SELECT 1 FROM users WHERE id = ?", (uid,)
+            ).fetchone()
+            if exists is None:
+                raise HTTPException(status_code=404, detail=f"{label} not found")
+
+        total_row = conn.execute(
+            """
+            SELECT COUNT(*) AS cnt FROM messages
+            WHERE (from_user_id = ? AND to_user_id = ?)
+               OR (from_user_id = ? AND to_user_id = ?)
+            """,
+            (user_id, peer_id, peer_id, user_id),
+        ).fetchone()
+        total = int(total_row["cnt"])
+
+        rows = conn.execute(
+            """
+            SELECT * FROM messages
+            WHERE (from_user_id = ? AND to_user_id = ?)
+               OR (from_user_id = ? AND to_user_id = ?)
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (user_id, peer_id, peer_id, user_id, limit, offset),
+        ).fetchall()
+
+    return MessageListOut(
+        items=[_row_to_message(row) for row in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post("", response_model=MessageOut, status_code=201)
@@ -110,13 +171,4 @@ def get_message(message_id: str) -> MessageOut:
         ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="message not found")
-    return MessageOut(
-        id=row["id"],
-        text=row["text"],
-        from_user_id=row["from_user_id"],
-        to_user_id=row["to_user_id"],
-        push_status=row["push_status"],
-        push_error=row["push_error"],
-        created_at=row["created_at"],
-        updated_at=row["updated_at"],
-    )
+    return _row_to_message(row)

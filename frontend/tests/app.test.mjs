@@ -33,6 +33,16 @@ test("getAppTitle возвращает название приложения", a
   assert.equal(mod.getAppTitle(), "PWA Push Messenger");
 });
 
+test("formatPushStatus поясняет delivered отдельно от sent", async () => {
+  const moduleUrl = pathToFileURL(join(frontendRoot, "app.js")).href;
+  const mod = await import(`${moduleUrl}?t=${Date.now()}`);
+  assert.match(mod.formatPushStatus("sent"), /ждём доставку/i);
+  assert.match(mod.formatPushStatus("delivered"), /Доставлено получателю/);
+  assert.match(mod.formatPushStatus("failed"), /Не удалось/);
+  assert.equal(mod.formatPushStatusShort("delivered"), "доставлено");
+  assert.equal(mod.formatPushStatusShort("sent"), "в пути");
+});
+
 test("index.html ссылается на стили, манифест и app.js", () => {
   const html = readFileSync(join(frontendRoot, "index.html"), "utf8");
   assert.match(html, /styles\.css/);

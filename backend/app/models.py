@@ -42,3 +42,10 @@ class MessageOut(BaseModel):
     push_error: str | None = None
     created_at: str
     updated_at: str
+
+
+class MessageListOut(BaseModel):
+    items: list[MessageOut]
+    total: int
+    limit: int
+    offset: int

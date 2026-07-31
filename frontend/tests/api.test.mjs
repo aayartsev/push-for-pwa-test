@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const apiUrl = pathToFileURL(join(__dirname, "..", "api.js")).href;
-const { createUser, listUsers, sendMessage } = await import(apiUrl);
+const { createUser, listUsers, sendMessage, getMessage, listMessages } =
+  await import(apiUrl);
 
 function mockFetch(handler) {
   return async (url, options = {}) => handler(url, options);
@@ -78,4 +79,41 @@ test("sendMessage отправляет POST /api/messages", async () => {
     text: "hi",
   });
   assert.equal(message.push_status, "pending");
+});
+
+test("getMessage читает GET /api/messages/:id", async () => {
+  const fetchImpl = mockFetch(async (url, options) => {
+    assert.equal(url, "http://app/api/messages/m1");
+    assert.equal(options.method, undefined);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ id: "m1", push_status: "delivered" }),
+    };
+  });
+  const message = await getMessage(fetchImpl, "http://app", "m1");
+  assert.equal(message.push_status, "delivered");
+});
+
+test("listMessages запрашивает пагинацию диалога", async () => {
+  const fetchImpl = mockFetch(async (url) => {
+    assert.match(url, /\/api\/messages\?/);
+    const parsed = new URL(url);
+    assert.equal(parsed.searchParams.get("user_id"), "u1");
+    assert.equal(parsed.searchParams.get("peer_id"), "u2");
+    assert.equal(parsed.searchParams.get("limit"), "10");
+    assert.equal(parsed.searchParams.get("offset"), "20");
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [], total: 0, limit: 10, offset: 20 }),
+    };
+  });
+  const page = await listMessages(fetchImpl, "http://app", {
+    userId: "u1",
+    peerId: "u2",
+    limit: 10,
+    offset: 20,
+  });
+  assert.equal(page.offset, 20);
 });

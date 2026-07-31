@@ -1,9 +1,41 @@
-import { listUsers, sendMessage } from "./api.js";
+import { listUsers, sendMessage, getMessage, listMessages } from "./api.js";
 import { loadSession, clearSession, initialScreen } from "./storage.js";
 import { completeRegistration } from "./register.js";
 
+export const MESSAGE_PAGE_SIZE = 10;
+
 export function getAppTitle() {
   return "PWA Push Messenger";
+}
+
+export function formatPushStatus(status) {
+  switch (status) {
+    case "pending":
+      return "Отправляется…";
+    case "sent":
+      return "Отправлено push-сервису, ждём доставку получателю…";
+    case "delivered":
+      return "Доставлено получателю";
+    case "failed":
+      return "Не удалось отправить";
+    default:
+      return status ? String(status) : "";
+  }
+}
+
+export function formatPushStatusShort(status) {
+  switch (status) {
+    case "pending":
+      return "отправка";
+    case "sent":
+      return "в пути";
+    case "delivered":
+      return "доставлено";
+    case "failed":
+      return "ошибка";
+    default:
+      return status ? String(status) : "";
+  }
 }
 
 export function getInstallEventHolder(win = globalThis) {
@@ -66,8 +98,49 @@ export function createAppComponent(owlApi = globalThis.owl) {
         </section>
 
         <section t-if="state.screen === 'compose'" class="screen">
-          <h1>Сообщение</h1>
-          <p class="compose-to">Кому: <t t-esc="state.recipient.name"/></p>
+          <h1>Диалог</h1>
+          <p class="compose-to">С: <t t-esc="state.recipient.name"/></p>
+
+          <div class="thread-toolbar">
+            <button class="secondary" t-on-click="refreshThread" t-att-disabled="state.busy">
+              Обновить статусы
+            </button>
+            <span class="thread-meta" t-esc="threadMeta()"/>
+          </div>
+
+          <ul class="thread">
+            <li t-foreach="state.messages" t-as="msg" t-key="msg.id"
+                t-att-class="{
+                  mine: msg.from_user_id === state.session.userId,
+                  theirs: msg.from_user_id !== state.session.userId,
+                }">
+              <div class="bubble-text" t-esc="msg.text"/>
+              <div class="bubble-meta">
+                <span t-esc="directionLabel(msg)"/>
+                <span t-att-class="{
+                  'push-tag': true,
+                  ok: msg.push_status === 'delivered',
+                  bad: msg.push_status === 'failed',
+                  wait: msg.push_status === 'sent' || msg.push_status === 'pending',
+                }" t-esc="statusShort(msg.push_status)"/>
+              </div>
+            </li>
+          </ul>
+          <p t-if="!state.messages.length" class="hint">Пока нет сообщений в этой переписке.</p>
+
+          <div class="pager" t-if="state.messagesTotal > state.messagesLimit">
+            <button class="secondary"
+                    t-on-click="prevPage"
+                    t-att-disabled="state.busy || !canNewer()">
+              Новее
+            </button>
+            <button class="secondary"
+                    t-on-click="nextPage"
+                    t-att-disabled="state.busy || !hasOlder()">
+              Старее
+            </button>
+          </div>
+
           <div class="send-row">
             <textarea t-model="state.text" placeholder="Текст сообщения"></textarea>
             <button class="plane" title="Отправить" t-on-click="onSend" t-att-disabled="state.busy">✈</button>
@@ -75,7 +148,10 @@ export function createAppComponent(owlApi = globalThis.owl) {
           <div class="actions">
             <button class="secondary" t-on-click="backToUsers">К списку</button>
           </div>
-          <p t-if="state.status" class="status" t-esc="state.status"/>
+          <p t-if="state.status" class="status" t-att-class="{
+            ok: state.pushStatus === 'delivered',
+            bad: state.pushStatus === 'failed',
+          }" t-esc="state.status"/>
           <p t-if="state.error" class="error" t-esc="state.error"/>
         </section>
       </div>
@@ -84,6 +160,7 @@ export function createAppComponent(owlApi = globalThis.owl) {
     setup() {
       const session = loadSession();
       const install = getInstallEventHolder();
+      this._deliveryPollId = null;
       this.state = useState({
         screen: initialScreen(session),
         session,
@@ -93,8 +170,13 @@ export function createAppComponent(owlApi = globalThis.owl) {
         text: "",
         error: "",
         status: "",
+        pushStatus: "",
         busy: false,
         deferredInstall: install.event,
+        messages: [],
+        messagesTotal: 0,
+        messagesLimit: MESSAGE_PAGE_SIZE,
+        messagesOffset: 0,
       });
 
       window.addEventListener("beforeinstallprompt", (event) => {
@@ -105,6 +187,134 @@ export function createAppComponent(owlApi = globalThis.owl) {
 
       if (this.state.screen === "users") {
         this.refreshUsers();
+      }
+    }
+
+    statusShort(status) {
+      return formatPushStatusShort(status);
+    }
+
+    directionLabel(msg) {
+      return msg.from_user_id === this.state.session.userId ? "вы →" : "← им";
+    }
+
+    threadMeta() {
+      const { messagesTotal, messagesOffset, messagesLimit, messages } = this.state;
+      if (!messagesTotal) {
+        return "0 сообщений";
+      }
+      const from = messagesOffset + 1;
+      const to = messagesOffset + messages.length;
+      return `${from}–${to} из ${messagesTotal}`;
+    }
+
+    hasOlder() {
+      return this.state.messagesOffset + this.state.messages.length < this.state.messagesTotal;
+    }
+
+    canNewer() {
+      return this.state.messagesOffset > 0;
+    }
+
+    stopDeliveryPoll() {
+      this._deliveryPollId = null;
+    }
+
+    async watchDelivery(messageId) {
+      this._deliveryPollId = messageId;
+      const deadline = Date.now() + 90_000;
+      while (Date.now() < deadline) {
+        if (this._deliveryPollId !== messageId) {
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        if (this._deliveryPollId !== messageId) {
+          return;
+        }
+        try {
+          const message = await getMessage(fetch, window.location.origin, messageId);
+          this.state.pushStatus = message.push_status;
+          this.state.status = formatPushStatus(message.push_status);
+          const idx = this.state.messages.findIndex((item) => item.id === messageId);
+          if (idx >= 0) {
+            this.state.messages[idx] = {
+              ...this.state.messages[idx],
+              push_status: message.push_status,
+              updated_at: message.updated_at,
+            };
+          }
+          if (message.push_status === "delivered" || message.push_status === "failed") {
+            return;
+          }
+        } catch {
+          // сеть могла моргнуть — продолжаем ждать ack
+        }
+      }
+      if (this._deliveryPollId === messageId && this.state.pushStatus === "sent") {
+        this.state.status =
+          "Отправлено push-сервису, но подтверждение от получателя пока не пришло";
+      }
+    }
+
+    async loadThread({ offset = this.state.messagesOffset } = {}) {
+      if (!this.state.session || !this.state.recipient) {
+        return;
+      }
+      const data = await listMessages(fetch, window.location.origin, {
+        userId: this.state.session.userId,
+        peerId: this.state.recipient.id,
+        limit: this.state.messagesLimit,
+        offset,
+      });
+      this.state.messages = data.items || [];
+      this.state.messagesTotal = data.total || 0;
+      this.state.messagesOffset = data.offset ?? offset;
+      this.state.messagesLimit = data.limit || this.state.messagesLimit;
+    }
+
+    async refreshThread() {
+      this.state.error = "";
+      this.state.busy = true;
+      try {
+        await this.loadThread({ offset: this.state.messagesOffset });
+      } catch (err) {
+        this.state.error = err.message || String(err);
+      } finally {
+        this.state.busy = false;
+      }
+    }
+
+    async nextPage() {
+      if (!this.hasOlder()) {
+        return;
+      }
+      this.state.error = "";
+      this.state.busy = true;
+      try {
+        await this.loadThread({
+          offset: this.state.messagesOffset + this.state.messagesLimit,
+        });
+      } catch (err) {
+        this.state.error = err.message || String(err);
+      } finally {
+        this.state.busy = false;
+      }
+    }
+
+    async prevPage() {
+      if (this.state.messagesOffset <= 0) {
+        return;
+      }
+      this.state.error = "";
+      this.state.busy = true;
+      try {
+        await this.loadThread({
+          offset: Math.max(0, this.state.messagesOffset - this.state.messagesLimit),
+        });
+      } catch (err) {
+        this.state.error = err.message || String(err);
+      } finally {
+        this.state.busy = false;
       }
     }
 
@@ -145,35 +355,53 @@ export function createAppComponent(owlApi = globalThis.owl) {
       }
     }
 
-    selectUser(user) {
+    async selectUser(user) {
       if (!this.state.session || user.id === this.state.session.userId) {
         this.state.error = "Выберите другого пользователя";
         return;
       }
+      this.stopDeliveryPoll();
       this.state.error = "";
       this.state.recipient = user;
       this.state.text = "";
       this.state.status = "";
+      this.state.pushStatus = "";
+      this.state.messages = [];
+      this.state.messagesTotal = 0;
+      this.state.messagesOffset = 0;
       this.state.screen = "compose";
+      this.state.busy = true;
+      try {
+        await this.loadThread({ offset: 0 });
+      } catch (err) {
+        this.state.error = err.message || String(err);
+      } finally {
+        this.state.busy = false;
+      }
     }
 
     backToUsers() {
+      this.stopDeliveryPoll();
       this.state.screen = "users";
       this.state.recipient = null;
+      this.state.messages = [];
       this.refreshUsers();
     }
 
     logout() {
+      this.stopDeliveryPoll();
       clearSession();
       this.state.session = null;
       this.state.screen = "register";
       this.state.users = [];
+      this.state.messages = [];
       this.state.error = "";
     }
 
     async onSend() {
       this.state.error = "";
       this.state.status = "";
+      this.state.pushStatus = "";
       const text = this.state.text.trim();
       if (!text) {
         this.state.error = "Введите текст";
@@ -187,7 +415,13 @@ export function createAppComponent(owlApi = globalThis.owl) {
           text,
         });
         this.state.text = "";
-        this.state.status = `Отправлено (${message.push_status})`;
+        this.state.pushStatus = message.push_status;
+        this.state.status = formatPushStatus(message.push_status);
+        this.state.messagesOffset = 0;
+        await this.loadThread({ offset: 0 });
+        if (message.push_status === "sent") {
+          this.watchDelivery(message.id);
+        }
       } catch (err) {
         this.state.error = err.message || String(err);
       } finally {
