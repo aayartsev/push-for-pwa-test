@@ -1,0 +1,26 @@
+# Локальный прокси на порту 80.
+services:
+  caddy:
+    image: caddy:2.9-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./caddy/Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+      - pushhive
+    networks:
+      - messenger
+    restart: unless-stopped
+
+  app:
+    environment:
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost}
+      PUSHHIVE_URL: http://pushhive:3000
+      PUSHHIVE_PUBLIC_URL: ${PUSHHIVE_PUBLIC_URL:-http://localhost/ph}
+
+volumes:
+  caddy_data:
+  caddy_config:

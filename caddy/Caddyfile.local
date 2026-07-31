@@ -1,0 +1,12 @@
+# Локальный HTTP reverse-proxy (secure context только на localhost).
+# Запуск: docker compose -f docker-compose.yml -f docker-compose.local.yml up --build -d
+
+:80 {
+	handle_path /ph/* {
+		reverse_proxy pushhive:3000
+	}
+
+	handle {
+		reverse_proxy app:8000
+	}
+}

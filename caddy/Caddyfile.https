@@ -1,0 +1,18 @@
+# HTTPS для локальной сети с сертификатами mkcert.
+# Хосты по умолчанию: pwa.lan и push.lan (пропишите в /etc/hosts или DNS на IP машины).
+# Запуск: ./scripts/gen-mkcert.sh && docker compose -f docker-compose.yml -f docker-compose.https.yml up --build -d
+
+pwa.lan {
+	tls /certs/pwa.lan.pem /certs/pwa.lan-key.pem
+	reverse_proxy app:8000
+}
+
+push.lan {
+	tls /certs/push.lan.pem /certs/push.lan-key.pem
+	reverse_proxy pushhive:3000
+}
+
+localhost {
+	tls /certs/localhost.pem /certs/localhost-key.pem
+	reverse_proxy app:8000
+}

@@ -1,0 +1,109 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_PATH: /data/app.db
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:8000}
+      PUSHHIVE_URL: ${PUSHHIVE_URL:-http://pushhive:3000}
+      PUSHHIVE_PUBLIC_URL: ${PUSHHIVE_PUBLIC_URL:-http://localhost:3000}
+      PUSHHIVE_API_KEY: ${PUSHHIVE_API_KEY:-}
+      FRONTEND_DIR: /frontend
+      ACK_SECRET: ${ACK_SECRET:-}
+    volumes:
+      - app_data:/data
+    depends_on:
+      - pushhive
+    networks:
+      - messenger
+    restart: unless-stopped
+
+  pushhive-mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - pushhive_mongo_data:/data/db
+    networks:
+      - messenger
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand({ping:1})"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  pushhive-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - pushhive_redis_data:/data
+    networks:
+      - messenger
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  pushhive:
+    build:
+      context: ./vendor/pushhive
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      MONGODB_URI: mongodb://pushhive-mongo:27017/pushhive
+      REDIS_HOST: pushhive-redis
+      REDIS_PORT: 6379
+      NODE_ENV: production
+      SESSION_SECRET: ${SESSION_SECRET:-changeme-session-secret}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_EMAIL: ${VAPID_EMAIL:-admin@example.com}
+    volumes:
+      - ./scripts/create-site.js:/scripts/create-site.js:ro
+    depends_on:
+      pushhive-mongo:
+        condition: service_healthy
+      pushhive-redis:
+        condition: service_healthy
+    networks:
+      - messenger
+    restart: unless-stopped
+
+  pushhive-worker:
+    build:
+      context: ./vendor/pushhive
+    command: ["node", "worker.js"]
+    environment:
+      MONGODB_URI: mongodb://pushhive-mongo:27017/pushhive
+      REDIS_HOST: pushhive-redis
+      REDIS_PORT: 6379
+      WORKER_ID: worker-1
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-10}
+      WORKER_RATE_LIMIT: ${WORKER_RATE_LIMIT:-50}
+      SESSION_SECRET: ${SESSION_SECRET:-changeme-session-secret}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_EMAIL: ${VAPID_EMAIL:-admin@example.com}
+    depends_on:
+      pushhive-mongo:
+        condition: service_healthy
+      pushhive-redis:
+        condition: service_healthy
+    networks:
+      - messenger
+    restart: unless-stopped
+volumes:
+  app_data:
+  pushhive_mongo_data:
+  pushhive_redis_data:
+
+networks:
+  messenger:
+    driver: bridge

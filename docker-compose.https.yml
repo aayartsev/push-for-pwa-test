@@ -1,0 +1,28 @@
+# HTTPS (mkcert) для LAN / localhost.
+services:
+  caddy:
+    image: caddy:2.9-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile.https:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+      - pushhive
+    networks:
+      - messenger
+    restart: unless-stopped
+
+  app:
+    environment:
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-https://pwa.lan}
+      PUSHHIVE_URL: http://pushhive:3000
+      PUSHHIVE_PUBLIC_URL: ${PUSHHIVE_PUBLIC_URL:-https://push.lan}
+
+volumes:
+  caddy_data:
+  caddy_config:
