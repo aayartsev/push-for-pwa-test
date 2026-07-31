@@ -38,7 +38,8 @@ services:
   pushhive-redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    # BullMQ требует noeviction — иначе ключи очередей вытесняются и пуши «пропадают».
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
     volumes:
       - pushhive_redis_data:/data
     networks:
@@ -99,6 +100,9 @@ services:
     networks:
       - messenger
     restart: unless-stopped
+    # Образ PushHive проверяет :3000, а worker HTTP не слушает.
+    healthcheck:
+      disable: true
 volumes:
   app_data:
   pushhive_mongo_data:

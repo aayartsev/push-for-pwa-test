@@ -41,10 +41,18 @@ test("index.html ссылается на стили, манифест и app.js"
   assert.match(html, /id="app"/);
 });
 
-test("manifest содержит display standalone", () => {
+test("manifest содержит display standalone и иконки 192/512", () => {
   const manifest = JSON.parse(
     readFileSync(join(frontendRoot, "manifest.webmanifest"), "utf8"),
   );
   assert.equal(manifest.display, "standalone");
   assert.equal(manifest.lang, "ru");
+  const sizes = new Set(manifest.icons.map((icon) => icon.sizes));
+  assert.ok(sizes.has("192x192"));
+  assert.ok(sizes.has("512x512"));
+});
+
+test("service worker обрабатывает fetch для installability", () => {
+  const sw = readFileSync(join(frontendRoot, "sw.js"), "utf8");
+  assert.match(sw, /addEventListener\(\s*["']fetch["']/);
 });

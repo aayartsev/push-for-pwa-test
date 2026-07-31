@@ -1,7 +1,7 @@
 /* Service worker: cache shell, show push, ack delivery. */
 
-const CACHE = "pwa-messenger-v1";
-const SHELL = ["/", "/static/styles.css", "/static/app.js"];
+const CACHE = "pwa-messenger-v2";
+const SHELL = ["/", "/static/styles.css", "/static/app.js", "/static/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -11,6 +11,33 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
+});
+
+// Нужен Chromium'у для installability (beforeinstallprompt).
+self.addEventListener("fetch", (event) => {
+  const { request } = event;
+  if (request.method !== "GET") {
+    return;
+  }
+  event.respondWith(
+    caches.match(request).then((cached) => {
+      if (cached) {
+        return cached;
+      }
+      return fetch(request).then((response) => {
+        const url = new URL(request.url);
+        if (
+          response.ok &&
+          url.origin === self.location.origin &&
+          (url.pathname === "/" || url.pathname.startsWith("/static/"))
+        ) {
+          const copy = response.clone();
+          caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => {});
+        }
+        return response;
+      });
+    }),
+  );
 });
 
 function extractMessageId(url) {
