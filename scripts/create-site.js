@@ -4,8 +4,8 @@
  * Запускается внутри контейнера pushhive:
  *   node /scripts/create-site.js <name> <domain>
  */
-require("dotenv").config();
-const mongoose = require("mongoose");
+// MONGODB_URI уже в env контейнера; dotenv не нужен (скрипт монтируется вне /app).
+const mongoose = require("/app/node_modules/mongoose");
 const Site = require("/app/models/Site");
 
 const name = process.argv[2] || "PWA Messenger";

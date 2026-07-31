@@ -7,7 +7,7 @@ services:
       - "443:443"
     volumes:
       - ./caddy/Caddyfile.https:/etc/caddy/Caddyfile:ro
-      - ./certs:/certs:ro
+      - ./local-certs:/certs:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -21,7 +21,7 @@ services:
     environment:
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-https://pwa.lan}
       PUSHHIVE_URL: http://pushhive:3000
-      PUSHHIVE_PUBLIC_URL: ${PUSHHIVE_PUBLIC_URL:-https://push.lan}
+      PUSHHIVE_PUBLIC_URL: ${PUSHHIVE_PUBLIC_URL:-https://pwa.lan/ph}
 
 volumes:
   caddy_data:

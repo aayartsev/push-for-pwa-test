@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CERT_DIR="${ROOT_DIR}/certs"
+CERT_DIR="${ROOT_DIR}/local-certs"
 HOSTS=("pwa.lan" "push.lan" "localhost")
 
 if ! command -v mkcert >/dev/null 2>&1; then

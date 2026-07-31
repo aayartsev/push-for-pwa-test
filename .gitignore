@@ -8,6 +8,7 @@ data/
 *.db
 vendor/
 certs/
+local-certs/
 node_modules/
 .coverage
 htmlcov/

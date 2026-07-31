@@ -10,10 +10,13 @@ if [[ ! -f .env ]]; then
   exit 1
 fi
 
-# shellcheck disable=SC1091
+# Подхватываем .env безопасно (значения с пробелами должны быть в кавычках).
 set -a
+# shellcheck disable=SC1091
 source .env
 set +a
+# На случай старого .env без кавычек вокруг имени сайта.
+PUSHHIVE_SITE_NAME="${PUSHHIVE_SITE_NAME:-PWA Messenger}"
 
 echo "→ Seed admin ..."
 docker compose exec -T pushhive node seed.js \
@@ -25,7 +28,7 @@ SITE_NAME="${PUSHHIVE_SITE_NAME:-PWA Messenger}"
 SITE_DOMAIN="${PUSHHIVE_SITE_DOMAIN:-localhost:8000}"
 
 echo "→ Создаём site «${SITE_NAME}» ..."
-API_KEY="$(docker compose exec -T pushhive node /scripts/create-site.js \
+API_KEY="$(docker compose exec -T -w /app pushhive node /scripts/create-site.js \
   "${SITE_NAME}" \
   "${SITE_DOMAIN}")"
 
