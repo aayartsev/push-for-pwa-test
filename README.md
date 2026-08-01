@@ -61,24 +61,24 @@ docker compose up -d app
 
 Откройте https://pwa.lan на телефоне в той же сети — можно ставить PWA и принимать push.
 
-### C. Публичный сервер (Let's Encrypt)
+### C. Публичный сервер (Let's Encrypt, один домен + `/ph`)
 
 В `.env`:
 
 ```env
 PUBLIC_APP_HOST=app.example.com
-PUBLIC_PUSH_HOST=push.example.com
 PUBLIC_APP_URL=https://app.example.com
-PUSHHIVE_PUBLIC_URL=https://push.example.com
+PUSHHIVE_PUBLIC_URL=https://app.example.com/ph
+PUSHHIVE_SITE_DOMAIN=app.example.com
 ```
 
-DNS A-записи обоих имён → IP сервера, порты 80/443 открыты:
+DNS A-запись `app.example.com` → IP сервера, порты 80/443 открыты:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.public.yml up --build -d
 ```
 
-Caddy сам выпустит сертификаты Let's Encrypt.
+Caddy сам выпустит сертификат Let's Encrypt. Приложение на `/`, PushHive на `/ph`.
 
 ## UI
 

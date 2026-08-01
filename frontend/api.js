@@ -78,3 +78,55 @@ export async function listMessages(
   }
   return data;
 }
+
+export async function listStaleUsers(fetchImpl, baseUrl, keepUserId) {
+  const params = new URLSearchParams();
+  if (keepUserId) {
+    params.set("keep_user_id", keepUserId);
+  }
+  const qs = params.toString();
+  const response = await fetchImpl(
+    `${baseUrl}/api/service/stale-users${qs ? `?${qs}` : ""}`,
+  );
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.detail || "listStaleUsers failed");
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+export async function purgeStaleUsers(fetchImpl, baseUrl, keepUserId) {
+  const response = await fetchImpl(`${baseUrl}/api/service/purge-stale`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ keep_user_id: keepUserId || null }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.detail || "purgeStaleUsers failed");
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+export async function deleteUser(fetchImpl, baseUrl, userId, keepUserId) {
+  const params = new URLSearchParams();
+  if (keepUserId) {
+    params.set("keep_user_id", keepUserId);
+  }
+  const qs = params.toString();
+  const response = await fetchImpl(
+    `${baseUrl}/api/service/users/${encodeURIComponent(userId)}${qs ? `?${qs}` : ""}`,
+    { method: "DELETE" },
+  );
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.detail || "deleteUser failed");
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}

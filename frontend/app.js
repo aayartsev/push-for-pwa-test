@@ -1,4 +1,12 @@
-import { listUsers, sendMessage, getMessage, listMessages } from "./api.js";
+import {
+  listUsers,
+  sendMessage,
+  getMessage,
+  listMessages,
+  listStaleUsers,
+  purgeStaleUsers,
+  deleteUser,
+} from "./api.js";
 import { loadSession, clearSession, initialScreen } from "./storage.js";
 import { completeRegistration } from "./register.js";
 
@@ -8,7 +16,7 @@ export function getAppTitle() {
   return "PWA Push Messenger";
 }
 
-export function formatPushStatus(status) {
+export function formatPushStatus(status, pushError = "") {
   switch (status) {
     case "pending":
       return "Отправляется…";
@@ -16,8 +24,13 @@ export function formatPushStatus(status) {
       return "Отправлено push-сервису, ждём доставку получателю…";
     case "delivered":
       return "Доставлено получателю";
-    case "failed":
-      return "Не удалось отправить";
+    case "failed": {
+      const detail = String(pushError || "").trim();
+      if (/unsubscribed or expired|unexpected response code|410/i.test(detail)) {
+        return "Не удалось отправить: у получателя устарела push-подписка — пусть перерегистрируется";
+      }
+      return detail ? `Не удалось отправить: ${detail}` : "Не удалось отправить";
+    }
     default:
       return status ? String(status) : "";
   }
@@ -83,6 +96,7 @@ export function createAppComponent(owlApi = globalThis.owl) {
           <p class="hint">Вы: <t t-esc="state.session.userName"/>. Список обновляется вручную.</p>
           <div class="actions">
             <button class="secondary" t-on-click="refreshUsers" t-att-disabled="state.busy">Обновить</button>
+            <button class="secondary" t-on-click="openService" t-att-disabled="state.busy">Сервис</button>
             <button class="secondary" t-on-click="logout">Сменить имя</button>
           </div>
           <ul class="user-list">
@@ -94,6 +108,38 @@ export function createAppComponent(owlApi = globalThis.owl) {
               </button>
             </li>
           </ul>
+          <p t-if="state.error" class="error" t-esc="state.error"/>
+        </section>
+
+        <section t-if="state.screen === 'service'" class="screen">
+          <h1>Сервис</h1>
+          <p class="hint">
+            Удаляет пользователей с протухшей push-подпиской и все их сообщения.
+            Ваш аккаунт не трогаем.
+          </p>
+          <div class="actions">
+            <button class="secondary" t-on-click="refreshStale" t-att-disabled="state.busy">Обновить список</button>
+            <button t-on-click="onPurgeStale" t-att-disabled="state.busy || !state.staleUsers.length">
+              Удалить протухшие
+            </button>
+          </div>
+          <ul class="user-list stale-list">
+            <li t-foreach="state.staleUsers" t-as="user" t-key="user.id" class="stale-row">
+              <div class="stale-info">
+                <strong t-esc="user.name"/>
+                <span class="hint">ошибок push: <t t-esc="user.failed_count"/></span>
+              </div>
+              <button class="secondary danger" t-on-click="() => this.onDeleteUser(user)"
+                      t-att-disabled="state.busy">
+                Удалить
+              </button>
+            </li>
+          </ul>
+          <p t-if="!state.staleUsers.length" class="hint">Протухших пользователей нет.</p>
+          <p t-if="state.status" class="status ok" t-esc="state.status"/>
+          <div class="actions">
+            <button class="secondary" t-on-click="backToUsers">К списку</button>
+          </div>
           <p t-if="state.error" class="error" t-esc="state.error"/>
         </section>
 
@@ -177,6 +223,7 @@ export function createAppComponent(owlApi = globalThis.owl) {
         messagesTotal: 0,
         messagesLimit: MESSAGE_PAGE_SIZE,
         messagesOffset: 0,
+        staleUsers: [],
       });
 
       window.addEventListener("beforeinstallprompt", (event) => {
@@ -234,7 +281,7 @@ export function createAppComponent(owlApi = globalThis.owl) {
         try {
           const message = await getMessage(fetch, window.location.origin, messageId);
           this.state.pushStatus = message.push_status;
-          this.state.status = formatPushStatus(message.push_status);
+          this.state.status = formatPushStatus(message.push_status, message.push_error);
           const idx = this.state.messages.findIndex((item) => item.id === messageId);
           if (idx >= 0) {
             this.state.messages[idx] = {
@@ -355,6 +402,89 @@ export function createAppComponent(owlApi = globalThis.owl) {
       }
     }
 
+    async openService() {
+      this.state.error = "";
+      this.state.status = "";
+      this.state.screen = "service";
+      await this.refreshStale();
+    }
+
+    async refreshStale() {
+      if (!this.state.session) {
+        return;
+      }
+      this.state.error = "";
+      this.state.busy = true;
+      try {
+        const data = await listStaleUsers(
+          fetch,
+          window.location.origin,
+          this.state.session.userId,
+        );
+        this.state.staleUsers = data.items || [];
+      } catch (err) {
+        this.state.error = err.message || String(err);
+      } finally {
+        this.state.busy = false;
+      }
+    }
+
+    async onPurgeStale() {
+      if (!this.state.session) {
+        return;
+      }
+      if (
+        !window.confirm(
+          "Удалить всех пользователей с протухшей подпиской и их сообщения?",
+        )
+      ) {
+        return;
+      }
+      this.state.error = "";
+      this.state.status = "";
+      this.state.busy = true;
+      try {
+        const result = await purgeStaleUsers(
+          fetch,
+          window.location.origin,
+          this.state.session.userId,
+        );
+        this.state.status = `Удалено пользователей: ${result.deleted_user_count}, сообщений: ${result.deleted_message_count}`;
+        this.state.staleUsers = [];
+        await this.refreshStale();
+      } catch (err) {
+        this.state.error = err.message || String(err);
+      } finally {
+        this.state.busy = false;
+      }
+    }
+
+    async onDeleteUser(user) {
+      if (!this.state.session) {
+        return;
+      }
+      if (!window.confirm(`Удалить «${user.name}» и все связанные сообщения?`)) {
+        return;
+      }
+      this.state.error = "";
+      this.state.status = "";
+      this.state.busy = true;
+      try {
+        const result = await deleteUser(
+          fetch,
+          window.location.origin,
+          user.id,
+          this.state.session.userId,
+        );
+        this.state.status = `Удалён «${user.name}», сообщений: ${result.deleted_message_count}`;
+        await this.refreshStale();
+      } catch (err) {
+        this.state.error = err.message || String(err);
+      } finally {
+        this.state.busy = false;
+      }
+    }
+
     async selectUser(user) {
       if (!this.state.session || user.id === this.state.session.userId) {
         this.state.error = "Выберите другого пользователя";
@@ -416,7 +546,7 @@ export function createAppComponent(owlApi = globalThis.owl) {
         });
         this.state.text = "";
         this.state.pushStatus = message.push_status;
-        this.state.status = formatPushStatus(message.push_status);
+        this.state.status = formatPushStatus(message.push_status, message.push_error);
         this.state.messagesOffset = 0;
         await this.loadThread({ offset: 0 });
         if (message.push_status === "sent") {

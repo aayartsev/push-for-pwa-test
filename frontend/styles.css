@@ -146,6 +146,32 @@ button:disabled {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
+button.secondary.danger {
+  background: #fecaca;
+  color: var(--danger);
+}
+
+.stale-list .stale-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--card);
+}
+
+.stale-info {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.stale-info .hint {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
 .compose-to {
   font-weight: 600;
   margin-bottom: 0.75rem;

@@ -19,7 +19,9 @@ def test_caddyfiles_exist_with_expected_hosts() -> None:
 
     public = (ROOT / "caddy" / "Caddyfile.public").read_text(encoding="utf-8")
     assert "PUBLIC_APP_HOST" in public
-    assert "PUBLIC_PUSH_HOST" in public
+    assert "handle_path /ph/*" in public
+    assert "reverse_proxy pushhive:3000" in public
+    assert "reverse_proxy app:8000" in public
 
 
 def test_compose_overrides_define_caddy() -> None:

@@ -14,7 +14,21 @@ export async function registerServiceWorker(registrationFn = navigator.serviceWo
   if (!registrationFn) {
     throw new Error("Service Worker не поддерживается");
   }
-  return registrationFn("/sw.js");
+  const registration = await registrationFn("/sw.js");
+  // PushManager.subscribe требует активный SW; иначе Firefox даёт
+  // AbortError: "Error retrieving push subscription."
+  if (navigator.serviceWorker?.ready) {
+    await navigator.serviceWorker.ready;
+  } else if (registration.installing) {
+    await new Promise((resolve, reject) => {
+      const worker = registration.installing;
+      worker.addEventListener("statechange", () => {
+        if (worker.state === "activated") resolve();
+        if (worker.state === "redundant") reject(new Error("Service Worker не активировался"));
+      });
+    });
+  }
+  return registration;
 }
 
 export async function subscribeWebPush(registration, vapidPublicKey) {
@@ -22,10 +36,26 @@ export async function subscribeWebPush(registration, vapidPublicKey) {
   if (permission !== "granted") {
     throw new Error("Разрешение на уведомления не выдано");
   }
-  return registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-  });
+  const existing = await registration.pushManager.getSubscription();
+  if (existing) {
+    // Старая подписка с другим VAPID ломает subscribe.
+    await existing.unsubscribe().catch(() => {});
+  }
+  try {
+    return await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+    });
+  } catch (err) {
+    const msg = err && err.message ? String(err.message) : String(err);
+    if (/retrieving push subscription/i.test(msg) || err?.name === "AbortError") {
+      throw new Error(
+        "Не удалось создать push-подписку. В Firefox: about:config → dom.push.connection.enabled = true; " +
+          "очистите данные сайта и попробуйте снова. Также проверьте, что браузер не режет WebSocket к push-сервису.",
+      );
+    }
+    throw err;
+  }
 }
 
 export async function completeRegistration({

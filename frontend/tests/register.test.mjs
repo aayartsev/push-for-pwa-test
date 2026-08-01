@@ -98,6 +98,8 @@ test("app.js описывает три экрана", () => {
   const source = readFileSync(join(__dirname, "..", "app.js"), "utf8");
   assert.match(source, /screen === 'register'/);
   assert.match(source, /screen === 'users'/);
+  assert.match(source, /screen === 'service'/);
   assert.match(source, /screen === 'compose'/);
   assert.match(source, /beforeinstallprompt/);
+  assert.match(source, /purgeStaleUsers|onPurgeStale/);
 });

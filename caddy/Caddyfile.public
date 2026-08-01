@@ -1,11 +1,13 @@
-# Публичный сервер: автоматический Let's Encrypt (нужен реальный DNS на сервер).
-# Задайте PUBLIC_APP_HOST и PUBLIC_PUSH_HOST в .env
+# Публичный сервер: один домен, Let's Encrypt, PushHive на /ph.
+# Задайте PUBLIC_APP_HOST в .env
 # Запуск: docker compose -f docker-compose.yml -f docker-compose.public.yml up --build -d
 
 {$PUBLIC_APP_HOST} {
-	reverse_proxy app:8000
-}
+	handle_path /ph/* {
+		reverse_proxy pushhive:3000
+	}
 
-{$PUBLIC_PUSH_HOST} {
-	reverse_proxy pushhive:3000
+	handle {
+		reverse_proxy app:8000
+	}
 }

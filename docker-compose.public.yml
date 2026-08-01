@@ -1,4 +1,4 @@
-# Публичный HTTPS (Let's Encrypt через Caddy).
+# Публичный HTTPS (Let's Encrypt через Caddy), один домен + /ph.
 services:
   caddy:
     image: caddy:2.9-alpine
@@ -7,7 +7,6 @@ services:
       - "443:443"
     environment:
       PUBLIC_APP_HOST: ${PUBLIC_APP_HOST:?set PUBLIC_APP_HOST}
-      PUBLIC_PUSH_HOST: ${PUBLIC_PUSH_HOST:?set PUBLIC_PUSH_HOST}
     volumes:
       - ./caddy/Caddyfile.public:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -23,7 +22,7 @@ services:
     environment:
       PUBLIC_APP_URL: https://${PUBLIC_APP_HOST}
       PUSHHIVE_URL: http://pushhive:3000
-      PUSHHIVE_PUBLIC_URL: https://${PUBLIC_PUSH_HOST}
+      PUSHHIVE_PUBLIC_URL: https://${PUBLIC_APP_HOST}/ph
 
 volumes:
   caddy_data:
